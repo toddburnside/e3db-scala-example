@@ -14,14 +14,14 @@ import e3dbs.MetaSplitter._
 object Main extends MyApp with App {
   val program = for {
     user        <- prompt("Enter user name:")
-    toznyConfig <- getConfig(user)
+    toznyConfig <- getConfigOrCreateUser(user)
     client = new ClientBuilder().fromConfig(toznyConfig).build()
     conference <- prompt("Enter conference name:")
     s          <- programLoop(client, conference)
   } yield s
 
   program
-    .handleErrorWith(e => writeLine(s"Error creating contact: ${e.getMessage}"))
+    .handleErrorWith(e => writeLine(s"Error: ${e.getMessage}"))
     .compile
     .drain
     .unsafeRunSync
@@ -56,7 +56,13 @@ trait MyApp {
       .through(text.utf8Encode)
       .through(io.file.writeAll(Paths.get(filename))) ++ Stream.eval(IO(()))
 
-  // This was used to create the various users. But, not currently used.
+  def getConfigOrCreateUser(username: String) =
+    getConfig(username).handleErrorWith(
+      _ =>
+        prompt("Invalid user. Create new one? (Y/n)").flatMap(s =>
+          if (s.isEmpty || s.toUpperCase == "Y") registerAndSave(username)
+          else Stream()))
+
   def registerAndSave(username: String): Stream[IO, Config] =
     for {
       config <- Stream.eval(E3dbs.register(token, username, host))
